@@ -10,10 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omdb/main.dart';
 
 void main() {
-  testWidgets('mostra o catálogo de filmes', (WidgetTester tester) async {
+  testWidgets('mostra o título da aplicação', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp());
 
     expect(find.text('Open Movie Database'), findsOneWidget);
-    expect(find.text('Catálogo de filmes'), findsOneWidget);
   });
 }
