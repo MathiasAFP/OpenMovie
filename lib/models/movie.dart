@@ -17,11 +17,29 @@ class MovieSummary {
     );
   }
 
+  factory MovieSummary.fromLibraryJson(Map<String, dynamic> json) {
+    return MovieSummary(
+      imdbId: json['imdbId']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Título indisponível',
+      year: json['year']?.toString() ?? 'Ano indisponível',
+      type: json['type']?.toString() ?? '',
+      posterUrl: json['posterUrl']?.toString() ?? '',
+    );
+  }
+
   final String imdbId;
   final String title;
   final String year;
   final String type;
   final String posterUrl;
+
+  Map<String, String> toLibraryJson() => {
+    'imdbId': imdbId,
+    'title': title,
+    'year': year,
+    'type': type,
+    'posterUrl': posterUrl,
+  };
 
   String get localizedType => switch (type.toLowerCase()) {
     'movie' => 'Filme',
@@ -224,4 +242,12 @@ class MovieDetails {
   bool get hasPoster =>
       posterUrl.isNotEmpty && posterUrl.toUpperCase() != 'N/A';
   bool get hasPlot => plot.isNotEmpty && plot.toUpperCase() != 'N/A';
+
+  MovieSummary get summary => MovieSummary(
+    imdbId: imdbId,
+    title: title,
+    year: year,
+    type: type,
+    posterUrl: posterUrl,
+  );
 }

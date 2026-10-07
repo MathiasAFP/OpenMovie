@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../models/movie.dart';
+import '../services/omdb_service.dart';
 import '../services/search_history_store.dart';
+import '../services/user_library_store.dart';
 import '../theme/app_theme.dart';
+import '../widgets/movie_poster.dart';
 import '../widgets/movie_search_input.dart';
+import 'details_screen.dart';
 import 'results_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.service, this.libraryStore});
+
+  final OmdbService? service;
+  final UserLibraryStore? libraryStore;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -15,15 +23,27 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _controller = TextEditingController();
   final _historyStore = SearchHistoryStore();
+  late final OmdbService _service;
+  late final UserLibraryStore _libraryStore;
   List<String> _history = const [];
+  List<MovieSummary> _highlights = const [];
+  Map<MovieCollection, List<MovieSummary>> _library = const {};
+  MovieCollection _selectedCollection = MovieCollection.favorites;
   bool _historyLoaded = false;
+  bool _highlightsLoading = true;
+  bool _libraryLoaded = false;
 
   static const _suggestions = ['Batman', 'Interstellar', 'Breaking Bad'];
+  static const _highlightSearches = ['Batman', 'Interstellar', 'Breaking Bad'];
 
   @override
   void initState() {
     super.initState();
+    _service = widget.service ?? const OmdbService();
+    _libraryStore = widget.libraryStore ?? UserLibraryStore();
     _loadHistory();
+    _loadHighlights();
+    _refreshLibrary();
   }
 
   @override
@@ -45,6 +65,49 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _loadHighlights() async {
+    final results = await Future.wait(
+      _highlightSearches.map((query) async {
+        try {
+          final result = await _service.searchMovies(query);
+          return result.movies.isEmpty ? null : result.movies.first;
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    if (!mounted) return;
+    final seen = <String>{};
+    setState(() {
+      _highlights = results
+          .whereType<MovieSummary>()
+          .where((movie) => movie.imdbId.isNotEmpty && seen.add(movie.imdbId))
+          .toList(growable: false);
+      _highlightsLoading = false;
+    });
+  }
+
+  Future<void> _refreshLibrary() async {
+    try {
+      final entries = await Future.wait([
+        _libraryStore.read(MovieCollection.favorites),
+        _libraryStore.read(MovieCollection.watchLater),
+        _libraryStore.read(MovieCollection.watched),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _library = {
+          MovieCollection.favorites: entries[0],
+          MovieCollection.watchLater: entries[1],
+          MovieCollection.watched: entries[2],
+        };
+        _libraryLoaded = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _libraryLoaded = true);
+    }
+  }
+
   Future<void> _search(String query) async {
     final cleanQuery = query.trim();
     if (cleanQuery.isEmpty) return;
@@ -60,10 +123,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ResultsScreen(initialQuery: cleanQuery),
+        builder: (_) => ResultsScreen(
+          initialQuery: cleanQuery,
+          service: _service,
+          libraryStore: _libraryStore,
+        ),
       ),
     );
-    if (mounted) _loadHistory();
+    if (mounted) {
+      _loadHistory();
+      _refreshLibrary();
+    }
+  }
+
+  Future<void> _openDetails(String imdbId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DetailsScreen(
+          imdbId: imdbId,
+          service: _service,
+          libraryStore: _libraryStore,
+        ),
+      ),
+    );
+    if (mounted) _refreshLibrary();
   }
 
   Future<void> _clearHistory() async {
@@ -101,6 +184,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         onSearch: _search,
                       ),
                       const SizedBox(height: 30),
+                      _buildHighlights(),
+                      const SizedBox(height: 28),
+                      _buildLibrary(),
+                      const SizedBox(height: 28),
                       _buildRecentSearches(),
                       const SizedBox(height: 28),
                       _buildFooter(),
@@ -112,6 +199,117 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildHighlights() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.auto_awesome_rounded, color: AppColors.accent, size: 19),
+            SizedBox(width: 9),
+            Text('Destaques', style: TextStyle(fontWeight: FontWeight.w700)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_highlightsLoading)
+          const LinearProgressIndicator(minHeight: 2)
+        else if (_highlights.isEmpty)
+          const Text(
+            'Os destaques não estão disponíveis agora. Tente novamente mais tarde.',
+            style: TextStyle(color: AppColors.muted, height: 1.4),
+          )
+        else
+          SizedBox(
+            height: 204,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _highlights.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final movie = _highlights[index];
+                return _HighlightCard(
+                  movie: movie,
+                  onTap: () => _openDetails(movie.imdbId),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLibrary() {
+    final entries = _library[_selectedCollection] ?? const <MovieSummary>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(
+              Icons.video_library_outlined,
+              color: AppColors.accent,
+              size: 19,
+            ),
+            SizedBox(width: 9),
+            Text(
+              'Minha biblioteca',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _collectionChip(MovieCollection.favorites, 'Favoritos'),
+            _collectionChip(MovieCollection.watchLater, 'Assistir mais tarde'),
+            _collectionChip(MovieCollection.watched, 'Assistidos'),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (!_libraryLoaded)
+          const LinearProgressIndicator(minHeight: 2)
+        else if (entries.isEmpty)
+          Text(
+            _selectedCollection == MovieCollection.favorites
+                ? 'Seus favoritos aparecem aqui.'
+                : _selectedCollection == MovieCollection.watchLater
+                ? 'Sua lista para assistir mais tarde está vazia.'
+                : 'Os títulos marcados como assistidos aparecem aqui.',
+            style: const TextStyle(color: AppColors.muted, height: 1.4),
+          )
+        else
+          ...entries.map(
+            (movie) => Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: _LibraryTile(
+                movie: movie,
+                onTap: () => _openDetails(movie.imdbId),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _collectionChip(MovieCollection collection, String label) {
+    final selected = _selectedCollection == collection;
+    final count = _library[collection]?.length ?? 0;
+    return ChoiceChip(
+      label: Text('$label ($count)'),
+      selected: selected,
+      onSelected: (_) => setState(() => _selectedCollection = collection),
+      selectedColor: AppColors.accent.withValues(alpha: 0.2),
+      side: BorderSide(color: selected ? AppColors.accent : AppColors.border),
+      labelStyle: TextStyle(
+        color: selected ? AppColors.text : AppColors.muted,
+        fontSize: 12,
+      ),
+      showCheckmark: false,
     );
   }
 
@@ -328,6 +526,111 @@ class _HistoryTile extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(query, style: const TextStyle(fontSize: 14)),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HighlightCard extends StatelessWidget {
+  const _HighlightCard({required this.movie, required this.onTap});
+
+  final MovieSummary movie;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 122,
+      child: Material(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(15),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(15),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MoviePoster(
+                  url: movie.posterUrl,
+                  width: 106,
+                  height: 142,
+                  borderRadius: 10,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  movie.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LibraryTile extends StatelessWidget {
+  const _LibraryTile({required this.movie, required this.onTap});
+
+  final MovieSummary movie;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(9),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.border.withValues(alpha: 0.7)),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              MoviePoster(
+                url: movie.posterUrl,
+                width: 46,
+                height: 64,
+                borderRadius: 8,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      movie.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${movie.year} • ${movie.localizedType}',
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
             ],

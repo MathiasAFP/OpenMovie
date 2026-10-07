@@ -7,16 +7,19 @@ A documentação técnica v3 descreve o MVP inicial de consulta fixa por Batman.
 ## O que já funciona
 
 - Pesquisa de filmes e séries pelo título.
+- Seção “Destaques” com sugestões carregadas por buscas pré-definidas na OMDb; tocar em um pôster abre os detalhes.
 - Resultados com pôster, ano e tipo de produção.
 - Paginação com botão “Carregar mais”.
-- Filtros opcionais por tipo de produção e ano.
+- Filtros por todos os títulos, filmes ou séries, com ano opcional.
 - Tela de detalhes consultada pelo identificador IMDb, com sinopse, notas, gêneros, direção, roteiro, elenco, prêmios e demais campos disponíveis.
-- Consulta de temporadas e lista de episódios para séries, dentro da própria tela de detalhes; selecionar um episódio abre sua ficha no mesmo fluxo.
+- Listas locais de favoritos, “Assistir mais tarde” e títulos assistidos, acessíveis na tela inicial.
+- Consulta de temporadas e lista de episódios para séries, dentro da própria tela de detalhes; é possível marcar episódios assistidos, e selecionar um episódio abre sua ficha no mesmo fluxo.
 - Histórico local das cinco buscas mais recentes, com opção para limpar.
+- Biblioteca e progresso dos episódios persistidos localmente com Shared Preferences.
 - Estados de carregamento, busca vazia, falha de rede, erro da API e tentativa novamente.
 - Interface adaptada para telas estreitas e largas.
 - Chave da OMDb fornecida em tempo de execução, sem valor gravado no código-fonte.
-- Testes automatizados do serviço para busca e filtros, detalhes, temporadas/episódios, erros da API e chave ausente.
+- Testes automatizados para serviço OMDb, persistência das coleções e episódios, busca, navegação até detalhes e favoritos.
 
 ## Como executar
 
@@ -44,11 +47,12 @@ Troque SUA_CHAVE por uma chave ativa. Não coloque a chave real em arquivos vers
 ## Organização do código
 
 - lib/main.dart: inicialização e tema do aplicativo.
-- lib/screens/home_screen.dart: apresentação, busca e histórico recente.
+- lib/screens/home_screen.dart: destaques, busca, biblioteca e histórico recente.
 - lib/screens/results_screen.dart: busca, estados da tela, resultados e paginação.
-- lib/screens/details_screen.dart: consulta e apresentação dos detalhes.
+- lib/screens/details_screen.dart: detalhes, listas pessoais e controle de episódios assistidos.
 - lib/services/omdb_service.dart: requisições HTTP, decodificação e mensagens de erro.
 - lib/services/search_history_store.dart: histórico local usando Shared Preferences.
+- lib/services/user_library_store.dart: favoritos, assistir mais tarde, assistidos e progresso dos episódios.
 - lib/models/movie.dart: modelos para resultados e detalhes.
 - lib/widgets/: campo de busca e componente de pôster.
 - lib/theme/app_theme.dart: cores e estilos compartilhados.
@@ -68,7 +72,9 @@ Capturas do app executando no navegador:
 
 - Revisar acessibilidade e navegação por leitor de tela.
 - Criar um backend intermediário antes de publicar o app; chaves incluídas em aplicativos cliente podem ser extraídas.
-- Ampliar os testes de widget para navegação e estados visuais além dos testes de serviço já existentes.
+- Validar manualmente as consultas ao vivo com uma chave OMDb ativa.
+
+Os destaques são sugestões simples geradas por três buscas de títulos conhecidos. A OMDb não oferece um endpoint próprio de tendências ou recomendações; por isso, o app não apresenta esses itens como uma classificação oficial.
 
 ## Documentos e capturas
 

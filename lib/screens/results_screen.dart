@@ -2,22 +2,31 @@ import 'package:flutter/material.dart';
 
 import '../models/movie.dart';
 import '../services/omdb_service.dart';
+import '../services/user_library_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/movie_poster.dart';
 import '../widgets/movie_search_input.dart';
 import 'details_screen.dart';
 
 class ResultsScreen extends StatefulWidget {
-  const ResultsScreen({super.key, required this.initialQuery});
+  const ResultsScreen({
+    super.key,
+    required this.initialQuery,
+    this.service,
+    this.libraryStore,
+  });
 
   final String initialQuery;
+  final OmdbService? service;
+  final UserLibraryStore? libraryStore;
 
   @override
   State<ResultsScreen> createState() => _ResultsScreenState();
 }
 
 class _ResultsScreenState extends State<ResultsScreen> {
-  final _service = const OmdbService();
+  late final OmdbService _service;
+  late final UserLibraryStore _libraryStore;
   late final TextEditingController _controller;
   late final TextEditingController _yearController;
   final _scrollController = ScrollController();
@@ -35,6 +44,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
   @override
   void initState() {
     super.initState();
+    _service = widget.service ?? const OmdbService();
+    _libraryStore = widget.libraryStore ?? UserLibraryStore();
     _controller = TextEditingController(text: widget.initialQuery);
     _yearController = TextEditingController();
     WidgetsBinding.instance.addPostFrameCallback(
@@ -244,7 +255,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       _typeChip('Todos', null),
                       _typeChip('Filmes', 'movie'),
                       _typeChip('Séries', 'series'),
-                      _typeChip('Episódios', 'episode'),
                     ],
                   ),
                   const SizedBox(height: 13),
@@ -366,7 +376,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
           movie: movie,
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => DetailsScreen(imdbId: movie.imdbId),
+              builder: (_) => DetailsScreen(
+                imdbId: movie.imdbId,
+                service: _service,
+                libraryStore: _libraryStore,
+              ),
             ),
           ),
         );

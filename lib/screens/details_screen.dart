@@ -2,31 +2,48 @@ import 'package:flutter/material.dart';
 
 import '../models/movie.dart';
 import '../services/omdb_service.dart';
+import '../services/user_library_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/movie_poster.dart';
 
 class DetailsScreen extends StatefulWidget {
-  const DetailsScreen({super.key, required this.imdbId});
+  const DetailsScreen({
+    super.key,
+    required this.imdbId,
+    this.service,
+    this.libraryStore,
+  });
 
   final String imdbId;
+  final OmdbService? service;
+  final UserLibraryStore? libraryStore;
 
   @override
   State<DetailsScreen> createState() => _DetailsScreenState();
 }
 
 class _DetailsScreenState extends State<DetailsScreen> {
-  final _service = const OmdbService();
+  late final OmdbService _service;
+  late final UserLibraryStore _libraryStore;
   MovieDetails? _movie;
   SeasonEpisodes? _seasonEpisodes;
+  Set<String> _watchedEpisodeIds = const {};
   String? _error;
   String? _seasonError;
   int? _selectedSeason;
   bool _loading = true;
   bool _loadingSeason = false;
+  bool _libraryLoading = true;
+  bool _savingLibrary = false;
+  bool _isFavorite = false;
+  bool _isWatchLater = false;
+  bool _isWatched = false;
 
   @override
   void initState() {
     super.initState();
+    _service = widget.service ?? const OmdbService();
+    _libraryStore = widget.libraryStore ?? UserLibraryStore();
     _loadDetails();
   }
 
@@ -45,6 +62,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
             ? 1
             : null;
       });
+      await _loadLibraryStatus(movie);
       if (_selectedSeason != null) await _loadSeason(_selectedSeason!);
     } on OmdbApiException catch (error) {
       if (!mounted) return;
@@ -58,6 +76,89 @@ class _DetailsScreenState extends State<DetailsScreen> {
         _error = 'Não foi possível carregar os detalhes deste título.';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _loadLibraryStatus(MovieDetails movie) async {
+    try {
+      final values = await Future.wait([
+        _libraryStore.contains(MovieCollection.favorites, movie.imdbId),
+        _libraryStore.contains(MovieCollection.watchLater, movie.imdbId),
+        _libraryStore.contains(MovieCollection.watched, movie.imdbId),
+      ]);
+      final watchedEpisodes = movie.isSeries
+          ? await _libraryStore.readWatchedEpisodes(movie.imdbId)
+          : const <String>{};
+      if (!mounted) return;
+      setState(() {
+        _isFavorite = values[0];
+        _isWatchLater = values[1];
+        _isWatched = values[2];
+        _watchedEpisodeIds = watchedEpisodes;
+        _libraryLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _libraryLoading = false);
+    }
+  }
+
+  Future<void> _toggleCollection(MovieCollection collection) async {
+    final movie = _movie;
+    if (movie == null || _savingLibrary) return;
+    final current = switch (collection) {
+      MovieCollection.favorites => _isFavorite,
+      MovieCollection.watchLater => _isWatchLater,
+      MovieCollection.watched => _isWatched,
+    };
+    setState(() => _savingLibrary = true);
+    try {
+      await _libraryStore.set(collection, movie.summary, !current);
+      if (!mounted) return;
+      setState(() {
+        switch (collection) {
+          case MovieCollection.favorites:
+            _isFavorite = !current;
+          case MovieCollection.watchLater:
+            _isWatchLater = !current;
+          case MovieCollection.watched:
+            _isWatched = !current;
+        }
+        _savingLibrary = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _savingLibrary = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível salvar essa alteração.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _toggleEpisode(SeasonEpisode episode) async {
+    if (episode.imdbId.isEmpty || _movie == null) return;
+    final previous = _watchedEpisodeIds;
+    final currentlyWatched = _watchedEpisodeIds.contains(episode.imdbId);
+    final updated = {..._watchedEpisodeIds};
+    if (currentlyWatched) {
+      updated.remove(episode.imdbId);
+    } else {
+      updated.add(episode.imdbId);
+    }
+    setState(() => _watchedEpisodeIds = updated);
+    try {
+      await _libraryStore.setEpisodeWatched(
+        _movie!.imdbId,
+        episode.imdbId,
+        !currentlyWatched,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _watchedEpisodeIds = previous);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível salvar o episódio.')),
+      );
     }
   }
 
@@ -174,6 +275,8 @@ class _DetailsScreenState extends State<DetailsScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildHero(movie),
+          const SizedBox(height: 16),
+          _buildLibraryActions(),
           const SizedBox(height: 25),
           _buildSection(
             title: 'Sinopse',
@@ -265,6 +368,51 @@ class _DetailsScreenState extends State<DetailsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLibraryActions() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _libraryAction(
+          label: _isFavorite ? 'Favorito' : 'Favoritar',
+          icon: _isFavorite ? Icons.favorite_rounded : Icons.favorite_border,
+          selected: _isFavorite,
+          onPressed: () => _toggleCollection(MovieCollection.favorites),
+        ),
+        _libraryAction(
+          label: _isWatchLater ? 'Na lista' : 'Assistir mais tarde',
+          icon: _isWatchLater ? Icons.bookmark_rounded : Icons.bookmark_border,
+          selected: _isWatchLater,
+          onPressed: () => _toggleCollection(MovieCollection.watchLater),
+        ),
+        _libraryAction(
+          label: _isWatched ? 'Assistido' : 'Marcar assistido',
+          icon: _isWatched ? Icons.check_circle : Icons.check_circle_outline,
+          selected: _isWatched,
+          onPressed: () => _toggleCollection(MovieCollection.watched),
+        ),
+      ],
+    );
+  }
+
+  Widget _libraryAction({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onPressed,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: _libraryLoading || _savingLibrary ? null : onPressed,
+      icon: Icon(icon, size: 17),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: selected ? AppColors.accent : AppColors.muted,
+        side: BorderSide(color: selected ? AppColors.accent : AppColors.border),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
       ),
     );
   }
@@ -362,6 +510,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
       if (_valid(episode.imdbRating)) 'IMDb ${episode.imdbRating}',
     ].join(' • ');
 
+    final isWatched = _watchedEpisodeIds.contains(episode.imdbId);
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: CircleAvatar(
@@ -375,11 +524,34 @@ class _DetailsScreenState extends State<DetailsScreen> {
       subtitle: subtitle.isEmpty
           ? null
           : Text(subtitle, style: const TextStyle(color: AppColors.muted)),
-      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: isWatched
+                ? 'Marcar como não assistido'
+                : 'Marcar assistido',
+            onPressed: episode.imdbId.isEmpty
+                ? null
+                : () => _toggleEpisode(episode),
+            icon: Icon(
+              isWatched
+                  ? Icons.check_box_rounded
+                  : Icons.check_box_outline_blank,
+              color: isWatched ? AppColors.accent : AppColors.muted,
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+        ],
+      ),
       onTap: _valid(episode.imdbId)
           ? () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => DetailsScreen(imdbId: episode.imdbId),
+                builder: (_) => DetailsScreen(
+                  imdbId: episode.imdbId,
+                  service: _service,
+                  libraryStore: _libraryStore,
+                ),
               ),
             )
           : null,
