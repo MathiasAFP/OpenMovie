@@ -143,7 +143,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
     }
   }
 
-  bool get _canLoadMore => _movies.length < _totalResults && _page < 10;
+  bool get _canLoadMore => _movies.length < _totalResults && _page < 100;
 
   @override
   Widget build(BuildContext context) {

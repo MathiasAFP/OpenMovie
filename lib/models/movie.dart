@@ -41,6 +41,73 @@ class MovieSearchResult {
   final int totalResults;
 }
 
+class MovieRating {
+  const MovieRating({required this.source, required this.value});
+
+  factory MovieRating.fromJson(Map<String, dynamic> json) => MovieRating(
+    source: json['Source']?.toString() ?? '',
+    value: json['Value']?.toString() ?? '',
+  );
+
+  final String source;
+  final String value;
+}
+
+class SeasonEpisode {
+  const SeasonEpisode({
+    required this.imdbId,
+    required this.title,
+    required this.released,
+    required this.episode,
+    required this.imdbRating,
+  });
+
+  factory SeasonEpisode.fromJson(Map<String, dynamic> json) => SeasonEpisode(
+    imdbId: json['imdbID']?.toString() ?? '',
+    title: json['Title']?.toString() ?? 'Título indisponível',
+    released: json['Released']?.toString() ?? '',
+    episode: json['Episode']?.toString() ?? '',
+    imdbRating: json['imdbRating']?.toString() ?? '',
+  );
+
+  final String imdbId;
+  final String title;
+  final String released;
+  final String episode;
+  final String imdbRating;
+}
+
+class SeasonEpisodes {
+  const SeasonEpisodes({
+    required this.season,
+    required this.totalSeasons,
+    required this.episodes,
+  });
+
+  factory SeasonEpisodes.fromJson(Map<String, dynamic> json) {
+    final rawEpisodes = json['Episodes'];
+    final episodes = rawEpisodes is List
+        ? rawEpisodes
+              .whereType<Map>()
+              .map(
+                (episode) =>
+                    SeasonEpisode.fromJson(Map<String, dynamic>.from(episode)),
+              )
+              .toList(growable: false)
+        : const <SeasonEpisode>[];
+
+    return SeasonEpisodes(
+      season: json['Season']?.toString() ?? '',
+      totalSeasons: int.tryParse(json['totalSeasons']?.toString() ?? '') ?? 0,
+      episodes: episodes,
+    );
+  }
+
+  final String season;
+  final int totalSeasons;
+  final List<SeasonEpisode> episodes;
+}
+
 class MovieDetails {
   const MovieDetails({
     required this.imdbId,
@@ -57,9 +124,31 @@ class MovieDetails {
     required this.actors,
     required this.imdbRating,
     required this.language,
+    this.writer = '',
+    this.country = '',
+    this.awards = '',
+    this.metascore = '',
+    this.imdbVotes = '',
+    this.dvd = '',
+    this.boxOffice = '',
+    this.production = '',
+    this.website = '',
+    this.totalSeasons,
+    this.ratings = const [],
   });
 
   factory MovieDetails.fromJson(Map<String, dynamic> json) {
+    final rawRatings = json['Ratings'];
+    final ratings = rawRatings is List
+        ? rawRatings
+              .whereType<Map>()
+              .map(
+                (rating) =>
+                    MovieRating.fromJson(Map<String, dynamic>.from(rating)),
+              )
+              .toList(growable: false)
+        : const <MovieRating>[];
+
     return MovieDetails(
       imdbId: json['imdbID']?.toString() ?? '',
       title: json['Title']?.toString() ?? 'Título indisponível',
@@ -75,6 +164,17 @@ class MovieDetails {
       actors: json['Actors']?.toString() ?? '',
       imdbRating: json['imdbRating']?.toString() ?? '',
       language: json['Language']?.toString() ?? '',
+      writer: json['Writer']?.toString() ?? '',
+      country: json['Country']?.toString() ?? '',
+      awards: json['Awards']?.toString() ?? '',
+      metascore: json['Metascore']?.toString() ?? '',
+      imdbVotes: json['imdbVotes']?.toString() ?? '',
+      dvd: json['DVD']?.toString() ?? '',
+      boxOffice: json['BoxOffice']?.toString() ?? '',
+      production: json['Production']?.toString() ?? '',
+      website: json['Website']?.toString() ?? '',
+      totalSeasons: int.tryParse(json['totalSeasons']?.toString() ?? ''),
+      ratings: ratings,
     );
   }
 
@@ -92,6 +192,17 @@ class MovieDetails {
   final String actors;
   final String imdbRating;
   final String language;
+  final String writer;
+  final String country;
+  final String awards;
+  final String metascore;
+  final String imdbVotes;
+  final String dvd;
+  final String boxOffice;
+  final String production;
+  final String website;
+  final int? totalSeasons;
+  final List<MovieRating> ratings;
 
   String get localizedType => switch (type.toLowerCase()) {
     'movie' => 'Filme',
@@ -99,6 +210,8 @@ class MovieDetails {
     'episode' => 'Episódio',
     _ => 'Título',
   };
+
+  bool get isSeries => type.toLowerCase() == 'series';
 
   List<String> get genres => genre
       .split(',')

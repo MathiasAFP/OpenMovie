@@ -212,42 +212,18 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 22),
           Align(
             alignment: Alignment.centerRight,
-            child: SizedBox(
-              width: 116,
-              height: 74,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Transform.rotate(
-                    angle: -0.16,
-                    child: Icon(
-                      Icons.movie_filter_rounded,
-                      size: 69,
-                      color: AppColors.muted.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  Positioned(
-                    right: 15,
-                    bottom: 0,
-                    child: Transform.rotate(
-                      angle: 0.18,
-                      child: const Icon(
-                        Icons.search_rounded,
-                        size: 48,
-                        color: AppColors.accent,
-                      ),
-                    ),
-                  ),
-                  const Positioned(
-                    left: 12,
-                    top: 5,
-                    child: Icon(
-                      Icons.auto_awesome,
-                      size: 17,
-                      color: AppColors.gold,
-                    ),
-                  ),
-                ],
+            child: Container(
+              width: 168,
+              height: 112,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Image.asset(
+                'assets/images/openmovie-pesquisa.png',
+                fit: BoxFit.cover,
+                semanticLabel: 'Claquete e lupa para encontrar filmes',
               ),
             ),
           ),

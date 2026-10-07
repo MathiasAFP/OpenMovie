@@ -17,8 +17,12 @@ class DetailsScreen extends StatefulWidget {
 class _DetailsScreenState extends State<DetailsScreen> {
   final _service = const OmdbService();
   MovieDetails? _movie;
+  SeasonEpisodes? _seasonEpisodes;
   String? _error;
+  String? _seasonError;
+  int? _selectedSeason;
   bool _loading = true;
+  bool _loadingSeason = false;
 
   @override
   void initState() {
@@ -37,7 +41,11 @@ class _DetailsScreenState extends State<DetailsScreen> {
       setState(() {
         _movie = movie;
         _loading = false;
+        _selectedSeason = movie.isSeries && (movie.totalSeasons ?? 0) > 0
+            ? 1
+            : null;
       });
+      if (_selectedSeason != null) await _loadSeason(_selectedSeason!);
     } on OmdbApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -49,6 +57,36 @@ class _DetailsScreenState extends State<DetailsScreen> {
       setState(() {
         _error = 'Não foi possível carregar os detalhes deste título.';
         _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadSeason(int season) async {
+    setState(() {
+      _selectedSeason = season;
+      _loadingSeason = true;
+      _seasonError = null;
+    });
+
+    try {
+      final result = await _service.getSeasonEpisodes(widget.imdbId, season);
+      if (!mounted) return;
+      setState(() {
+        _seasonEpisodes = result;
+        _loadingSeason = false;
+      });
+    } on OmdbApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _seasonError = error.message;
+        _loadingSeason = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _seasonError =
+            'Não foi possível carregar os episódios desta temporada.';
+        _loadingSeason = false;
       });
     }
   }
@@ -158,6 +196,14 @@ class _DetailsScreenState extends State<DetailsScreen> {
               emptyText: 'Informação indisponível',
             ),
           ),
+          if (_valid(movie.writer))
+            _buildSection(
+              title: 'Roteiro',
+              child: Text(
+                movie.writer,
+                style: const TextStyle(color: AppColors.muted, height: 1.45),
+              ),
+            ),
           _buildSection(
             title: 'Informações',
             child: Wrap(
@@ -181,6 +227,36 @@ class _DetailsScreenState extends State<DetailsScreen> {
               ],
             ),
           ),
+          if (_hasAdditionalInformation(movie))
+            _buildSection(
+              title: 'Outros dados',
+              child: Column(
+                children: [
+                  _InfoLine(label: 'País', value: movie.country),
+                  _InfoLine(label: 'Prêmios', value: movie.awards),
+                  _InfoLine(label: 'DVD', value: movie.dvd),
+                  _InfoLine(label: 'Bilheteria', value: movie.boxOffice),
+                  _InfoLine(label: 'Produção', value: movie.production),
+                  _InfoLine(label: 'Site', value: movie.website),
+                  _InfoLine(label: 'IMDb ID', value: movie.imdbId),
+                ],
+              ),
+            ),
+          if (movie.ratings.isNotEmpty ||
+              _valid(movie.metascore) ||
+              _valid(movie.imdbVotes))
+            _buildSection(
+              title: 'Avaliações',
+              child: Column(
+                children: [
+                  for (final rating in movie.ratings)
+                    _InfoLine(label: rating.source, value: rating.value),
+                  _InfoLine(label: 'Metascore', value: movie.metascore),
+                  _InfoLine(label: 'Votos IMDb', value: movie.imdbVotes),
+                ],
+              ),
+            ),
+          if (movie.isSeries) _buildSeasonEpisodes(movie),
           const SizedBox(height: 20),
           const Center(
             child: Text(
@@ -190,6 +266,123 @@ class _DetailsScreenState extends State<DetailsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  bool _hasAdditionalInformation(MovieDetails movie) =>
+      _valid(movie.country) ||
+      _valid(movie.awards) ||
+      _valid(movie.dvd) ||
+      _valid(movie.boxOffice) ||
+      _valid(movie.production) ||
+      _valid(movie.website) ||
+      _valid(movie.imdbId);
+
+  Widget _buildSeasonEpisodes(MovieDetails movie) {
+    final totalSeasons = movie.totalSeasons ?? 0;
+    if (totalSeasons < 1) {
+      return _buildSection(
+        title: 'Temporadas e episódios',
+        child: const Text(
+          'A OMDb não informou as temporadas desta série.',
+          style: TextStyle(color: AppColors.muted),
+        ),
+      );
+    }
+
+    return _buildSection(
+      title: 'Temporadas e episódios',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Temporada',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              DropdownButton<int>(
+                value: _selectedSeason,
+                isDense: true,
+                onChanged: _loadingSeason
+                    ? null
+                    : (season) {
+                        if (season != null && season != _selectedSeason) {
+                          _loadSeason(season);
+                        }
+                      },
+                items: List.generate(
+                  totalSeasons,
+                  (index) => DropdownMenuItem(
+                    value: index + 1,
+                    child: Text('Temporada ${index + 1}'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_loadingSeason)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_seasonError != null)
+            Column(
+              children: [
+                Text(
+                  _seasonError!,
+                  style: const TextStyle(color: AppColors.muted),
+                ),
+                TextButton.icon(
+                  onPressed: () => _loadSeason(_selectedSeason ?? 1),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Tentar novamente'),
+                ),
+              ],
+            )
+          else if (_seasonEpisodes?.episodes.isEmpty ?? true)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Nenhum episódio informado para esta temporada.',
+                style: TextStyle(color: AppColors.muted),
+              ),
+            )
+          else
+            ..._seasonEpisodes!.episodes.map(_buildEpisodeTile),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEpisodeTile(SeasonEpisode episode) {
+    final subtitle = [
+      if (_valid(episode.released)) episode.released,
+      if (_valid(episode.imdbRating)) 'IMDb ${episode.imdbRating}',
+    ].join(' • ');
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        backgroundColor: AppColors.surfaceRaised,
+        child: Text(
+          _valid(episode.episode) ? episode.episode : '•',
+          style: const TextStyle(fontSize: 12, color: AppColors.text),
+        ),
+      ),
+      title: Text(episode.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: subtitle.isEmpty
+          ? null
+          : Text(subtitle, style: const TextStyle(color: AppColors.muted)),
+      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+      onTap: _valid(episode.imdbId)
+          ? () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => DetailsScreen(imdbId: episode.imdbId),
+              ),
+            )
+          : null,
     );
   }
 
@@ -330,6 +523,35 @@ class _InfoValue extends StatelessWidget {
     return Text(
       _valid(value) ? value : emptyText,
       style: const TextStyle(color: AppColors.muted, height: 1.45),
+    );
+  }
+}
+
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_valid(value)) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 105,
+            child: Text(
+              label,
+              style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+          ),
+          Expanded(child: Text(value, style: const TextStyle(height: 1.4))),
+        ],
+      ),
     );
   }
 }

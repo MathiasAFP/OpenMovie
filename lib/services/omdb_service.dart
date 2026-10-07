@@ -17,7 +17,11 @@ class OmdbApiException implements Exception {
 }
 
 class OmdbService {
-  const OmdbService();
+  const OmdbService({this.client, String? apiKey})
+    : _apiKey = apiKey ?? _omdbApiKey;
+
+  final http.Client? client;
+  final String _apiKey;
 
   Future<MovieSearchResult> searchMovies(
     String query, {
@@ -56,8 +60,23 @@ class OmdbService {
     return MovieDetails.fromJson(data);
   }
 
+  Future<SeasonEpisodes> getSeasonEpisodes(
+    String seriesImdbId,
+    int season,
+  ) async {
+    if (season < 1) {
+      throw const OmdbApiException('Escolha uma temporada válida.');
+    }
+
+    final data = await _request({
+      'i': seriesImdbId,
+      'Season': season.toString(),
+    });
+    return SeasonEpisodes.fromJson(data);
+  }
+
   Future<Map<String, dynamic>> _request(Map<String, String> query) async {
-    if (_omdbApiKey.trim().isEmpty) {
+    if (_apiKey.trim().isEmpty) {
       throw const OmdbApiException(
         'A chave da OMDb não está configurada. Execute o app com '
         '--dart-define=OMDB_API_KEY=SUA_CHAVE.',
@@ -65,14 +84,15 @@ class OmdbService {
     }
 
     final uri = Uri.https('www.omdbapi.com', '/', {
-      'apikey': _omdbApiKey,
+      'apikey': _apiKey,
       'r': 'json',
       ...query,
     });
 
     late final http.Response response;
     try {
-      response = await http.get(uri).timeout(const Duration(seconds: 18));
+      final request = client?.get(uri) ?? http.get(uri);
+      response = await request.timeout(const Duration(seconds: 18));
     } on TimeoutException {
       throw const OmdbApiException(
         'A consulta demorou mais que o esperado. Tente novamente.',
